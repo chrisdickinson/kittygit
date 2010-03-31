@@ -1,7 +1,7 @@
 kittygit
 ========
 
-a gitosis-alike that uses the [nappingcat](http://github.com/chrisdickinson/nappingcat.git) framework to
+a gitosis-alike that uses the [nappingcat](http://github.com/chrisdickinson/nappingcat) framework to
 provide single-user git hosting. _in extreme beta mode right now_.
 
 installation
