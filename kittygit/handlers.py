@@ -76,6 +76,11 @@ def create_repo(request, repo_name, private=False, template_dir=None):
             close_fds=True,
         )
         #okay
+        login, hostname = (settings.get('user', '<nappingcat-user>'), settings.get('host', socket.gethostname() + '.local'))
+        try:
+            login = os.getlogin()
+        except OSError:
+            pass
         return """
             Successfully created a new repository. Clone it at %s@%s:%s.git
         """.strip() % (os.getlogin(), socket.gethostname(), '/'.join([request.user, repo_name]))
