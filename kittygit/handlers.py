@@ -1,5 +1,8 @@
 from nappingcat import auth
-from nappingcat.exceptions import NappingCatRejected
+from nappingcat.exceptions import NappingCatRejected, NappingCatException
+from kittygit.exceptions import KittyGitUnauthorized
+from kittygit.utils import get_full_repo_dir, get_clone_base_url
+from kittygit import operations
 import socket
 import os
 import subprocess
@@ -13,78 +16,42 @@ def fork_repo(request, repo):
 
     username, repo_name = repo.split('/', 1)
     if auth.has_permission(request, ('kittygit', 'read', '%s/%s' % (username, repo_name))):
-        auth.add_permission(request, ('kittygit', 'write', '%s/%s' % (request.user, repo_name)))
 
-
-        full_repo_dir = os.path.expanduser(
-            '/'.join([settings.get('repo_dir', '~/repos'), request.user, repo_name+'.git'])
-        )
-
-        if os.path.isdir(full_repo_dir):
-            raise NappingCatRejected("That repository has already been forked, silly.")
-        os.makedirs(full_repo_dir)
-
-        args = [
+        to_repo_dir = get_full_repo_dir(settings, request.user, repo_name)
+        from_repo_dir = get_full_repo_dir(settings, username, repo_name)
+        success = operations.fork_repository(
             settings.get('git', 'git'),
-            '--git-dir=.',
-            'clone',
-            '--mirror',
-            os.path.expanduser(
-                '/'.join([settings.get('repo_dir', '~/repos'), username, repo_name+'.git'])
-            ),
-            './',
-        ]
-
-        returncode = subprocess.call(
-            args=args,
-            cwd=full_repo_dir,
-            stdout=sys.stderr,
-            close_fds=True,
+            from_repo_dir,
+            to_repo_dir
         )
+        if success:
+            auth.add_permission(request, ('kittygit', 'write', '%s/%s' % (request.user, repo_name)))
+            clone_base = get_clone_base_url(settings)
+            return "Repository '%s' successfully forked.\nClone it at '%s:%s/%s.git'" % (repo, clone_base, request.user, repo_name)
+        else:
+            raise NappingCatException('Fork failed.')
     else:
-        raise NappingCatRejected("You don't have permission to read %s.git. Sorry!" % repo)
+        raise KittyGitUnauthorized("You don't have permission to read %s.git. Sorry!" % repo)
 
-def create_repo(request, repo_name, private=False, template_dir=None):
+def create_repo(request, repo_name, template_dir=None):
     settings = get_settings(request)
     if auth.has_permission(request, ('kittygit','create')):
         auth.add_permission(request, ('kittygit','write','%s/%s' % (request.user, repo_name)))
-        full_repo_dir = os.path.expanduser(
-            '/'.join([settings.get('repo_dir', '~/repos'), request.user, repo_name+'.git'])
-        )
-        if os.path.isdir(full_repo_dir):
-            raise NappingCatRejected("That repository already exists, silly.")
-        args = [
-            settings.get('git', 'git'),
-            '--git-dir=.',
-            'init',
-            '--bare',
-        ]
-        if template_dir:
-            base_template_dir = os.path.expanduser(settings.get('templates_dir', '~/kittygit_templates'))
-            output_template_dir = os.path.join(base_template_dir, template_dir)
-            if not os.path.isdir(output_template_dir):
-                raise NappingCatRejected("""
-                    The path "%s" is not a valid template dir within "%s".
-                """.strip() % (template_dir, base_template_dir))
-            args.append('--template=%s'%output_template_dir)
 
-        os.makedirs(full_repo_dir)
-        returncode = subprocess.call(
-            args=args,
-            cwd=full_repo_dir,
-            stdout=sys.stderr,
-            close_fds=True,
+        full_repo_dir = get_full_repo_dir(settings, request.user, repo_name)
+        success = operations.create_repository(
+            settings.get('git', 'git'),
+            full_repo_dir,
+            template_dir
         )
-        #okay
-        login, hostname = (settings.get('user', '<nappingcat-user>'), settings.get('host', socket.gethostname() + '.local'))
-        try:
-            login = os.getlogin()
-        except OSError:
-            pass
-        return """
-            Successfully created a new repository. Clone it at %s@%s:%s.git
-        """.strip() % (os.getlogin(), socket.gethostname(), '/'.join([request.user, repo_name]))
-    raise NappingCatRejected('You don\'t have permission to create a repo.')
+        if success:
+            clone_base = get_clone_base_url(settings)
+            return """
+                Successfully created a new repository. Clone it at %s:%s.git
+            """.strip() % (clone_base, '/'.join([request.user, repo_name]))
+        else:
+            raise NappingCatException('Create repo failed.') 
+    raise KittyGitUnauthorized('You don\'t have permission to create a repo.')
 
 def handle_git(request, action):
     settings = get_settings(request)
@@ -94,17 +61,25 @@ def handle_git(request, action):
     else:
         command, repo = request.command.split(' ', 1)
 
+    modes = {
+        ' receive-pack ':'write',
+        '-receive-pack ':'write',
+        ' upload-pack ':'read',
+        '-upload-pack ':'read',
+    }
+    perm = modes[action]
+
     parsed_repo = repo[1:-1][:-4]       # remove quotes and .git extension
-    newcommand = None
-
-    okay = (action in (' receive-pack ', '-receive-pack ') and auth.has_permission(request, ('kittygit','write',parsed_repo))) 
-    okay = okay or (action in (' upload-pack ', '-upload-pack ') and auth.has_permission(request, ('kittygit','read',parsed_repo)))
-    if okay:
-        newcommand = ' '.join([('git%s'%action.strip()), ("'%s/%s.git'" % (os.path.expanduser(settings.get('repo_dir', '~/repos')), parsed_repo))])
-        args = [settings.get('git', 'git'), ['git', 'shell', '-c', newcommand]]
-
-        os.execvp(*args)
+    repo_name = parsed_repo.split('/', 1)[1]
+    if auth.has_permission(request, ('kittygit', perm, parsed_repo)):
+        directory = get_full_repo_dir(settings, request.user, repo_name) 
+        success = operations.git_shell(settings.get('git', 'git'), action, directory) 
+        if success:
+            verb = {
+                'write':'wrote to',
+                'read':'read from',
+            }[perm]
+            return "Successfully %s repo '%s'" % (verb, parsed_repo)
+        raise NappingCatException('git%s failed.' % action.strip())
     else:
-        raise NappingCatRejected("""
-            You don't have permission to do that.
-        """.strip())
+        raise KittyGitUnauthorized("You don't have permission to %s repo '%s'" % (perm, parsed_repo))
