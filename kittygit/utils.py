@@ -1,5 +1,6 @@
 import os
 import socket
+DEFAULT_USER_NAME = '<nappingcat-user>'
 
 def get_full_repo_dir(settings, user, repo):
     return os.path.expanduser(
@@ -11,11 +12,5 @@ def get_clone_base_url(settings):
     try:
         login = os.getlogin() if login is None else login
     except OSError:
-        login = '<nappingcat-user>'
+        login = DEFAULT_USER_NAME
     return '%s@%s' % (login, hostname)
-
-def get_full_template_dir(settings, template_dir):
-    base_template_dir = os.path.expanduser(settings.get('templates_dir', '~/kittygit_templates'))
-    os.path.join(
-        base_template_dir, template_dir
-    )
