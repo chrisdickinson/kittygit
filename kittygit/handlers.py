@@ -26,6 +26,7 @@ def fork_repo(request, repo):
         )
         if success:
             auth.add_permission(request, ('kittygit', 'write', '%s/%s' % (request.user, repo_name)))
+            auth.add_permission(request, ('kittygit', 'read', '%s/%s' % (request.user, repo_name)))
             clone_base = get_clone_base_url(settings)
             return "Repository '%s' successfully forked.\nClone it at '%s:%s/%s.git'" % (repo, clone_base, request.user, repo_name)
         else:
@@ -37,6 +38,7 @@ def create_repo(request, repo_name, template_dir=None):
     settings = get_settings(request)
     if auth.has_permission(request, ('kittygit','create')):
         auth.add_permission(request, ('kittygit','write','%s/%s' % (request.user, repo_name)))
+        auth.add_permission(request, ('kittygit', 'read', '%s/%s' % (request.user, repo_name)))
 
         full_repo_dir = get_full_repo_dir(settings, request.user, repo_name)
         success = operations.create_repository(
