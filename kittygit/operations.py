@@ -3,7 +3,7 @@ import sys
 import subprocess
 from kittygit.exceptions import KittyGitRepoExists, KittyGitUnauthorized, KittyGitBadParameter
 from nappingcat.exceptions import NappingCatException
-def fork_repository(git, from_directory, to_directory, output=sys.stderr):
+def fork_repository(git, stdin, stdout, stderr, from_directory, to_directory):
     from_directory = os.path.abspath(from_directory)
     to_directory = os.path.abspath(to_directory)
 
@@ -19,11 +19,13 @@ def fork_repository(git, from_directory, to_directory, output=sys.stderr):
     return 0 == subprocess.call(
         args=args,
         cwd=to_directory,
-        stdout=output,
+        stdin=stdin,
+        stdout=stdout,
+        stderr=stderr,
         close_fds=True,
     )
 
-def create_repository(git, directory, template_dir=None, bare=True):
+def create_repository(git, stdin, stdout, stderr, directory, template_dir=None, bare=True):
     if os.path.isdir(directory):
         raise KittyGitRepoExists(directory)
     args = [git, '--git-dir=.', 'init', '--bare']
@@ -39,11 +41,13 @@ def create_repository(git, directory, template_dir=None, bare=True):
     return 0 == subprocess.call(
         args=args,
         cwd=directory,
-        stdout=sys.stderr,
+        stdin=stdin,
+        stdout=stdout,
+        stderr=stderr,
         close_fds=True,
     )
 
-def git_shell(git, action, directory):
+def git_shell(git, stdin, stdout, stderr, action, directory):
     if not os.path.isdir(directory):
         raise KittyGitBadParameter("%s is not a valid repository." % directory)
     command = 'git%s' % action.strip()
@@ -52,9 +56,9 @@ def git_shell(git, action, directory):
     return 0 == subprocess.call(
         args=args,
         cwd=directory,
-        stdout=sys.stdout,
-        stderr=sys.stderr,
-        stdin=sys.stdin
+        stdin=stdin,
+        stdout=stdout,
+        stderr=stderr
     )
 
  

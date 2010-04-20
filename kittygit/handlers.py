@@ -15,18 +15,22 @@ def fork_repo(request, repo):
     settings = get_settings(request)
 
     username, repo_name = repo.split('/', 1)
-    if auth.has_permission(request, ('kittygit', 'read', '%s/%s' % (username, repo_name))):
+    if auth.has_permission(request, request.user, ('kittygit', 'read', '%s/%s' % (username, repo_name))):
 
         to_repo_dir = get_full_repo_dir(settings, request.user, repo_name)
         from_repo_dir = get_full_repo_dir(settings, username, repo_name)
         success = operations.fork_repository(
             settings.get('git', 'git'),
+            request.stdin,
+            request.stdout,
+            request.stderr,
             from_repo_dir,
             to_repo_dir
         )
         if success:
-            auth.add_permission(request, ('kittygit', 'write', '%s/%s' % (request.user, repo_name)))
-            auth.add_permission(request, ('kittygit', 'read', '%s/%s' % (request.user, repo_name)))
+            auth.add_permission(request, request.user, ('kittygit', 'write', '%s/%s' % (request.user, repo_name)))
+            auth.add_permission(request, request.user, ('kittygit', 'read', '%s/%s' % (request.user, repo_name)))
+            auth.add_permission(request, username, ('kittygit', 'read', '%s/%s' % (request.user, repo_name)))
             clone_base = get_clone_base_url(settings)
             return "Repository '%s' successfully forked.\nClone it at '%s:%s/%s.git'" % (repo, clone_base, request.user, repo_name)
         else:
@@ -36,13 +40,16 @@ def fork_repo(request, repo):
 
 def create_repo(request, repo_name, template_dir=None):
     settings = get_settings(request)
-    if auth.has_permission(request, ('kittygit','create')):
-        auth.add_permission(request, ('kittygit','write','%s/%s' % (request.user, repo_name)))
-        auth.add_permission(request, ('kittygit', 'read', '%s/%s' % (request.user, repo_name)))
+    if auth.has_permission(request, request.user, ('kittygit','create')):
+        auth.add_permission(request, request.user, ('kittygit','write','%s/%s' % (request.user, repo_name)))
+        auth.add_permission(request, request.user, ('kittygit', 'read', '%s/%s' % (request.user, repo_name)))
 
         full_repo_dir = get_full_repo_dir(settings, request.user, repo_name)
         success = operations.create_repository(
             settings.get('git', 'git'),
+            request.stdin,
+            request.stdout,
+            request.stderr,
             full_repo_dir,
             template_dir
         )
@@ -73,9 +80,16 @@ def handle_git(request, action):
 
     parsed_repo = repo[1:-1][:-4]       # remove quotes and .git extension
     repo_name = parsed_repo.split('/', 1)[1]
-    if auth.has_permission(request, ('kittygit', perm, parsed_repo)):
+    if auth.has_permission(request, request.user, ('kittygit', perm, parsed_repo)):
         directory = get_full_repo_dir(settings, request.user, repo_name) 
-        success = operations.git_shell(settings.get('git', 'git'), action, directory) 
+        success = operations.git_shell(
+            settings.get('git', 'git'), 
+            request.stdin, 
+            request.stdout, 
+            request.stderr, 
+            action, 
+            directory
+        ) 
         if success:
             verb = {
                 'write':'wrote to',
