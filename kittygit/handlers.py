@@ -62,7 +62,7 @@ def create_repo(request, repo_name, template_dir=None):
             raise NappingCatException('Create repo failed.') 
     raise KittyGitUnauthorized('You don\'t have permission to create a repo.')
 
-def handle_git(request, action):
+def handle_git(request, action, permission_prefix='kittygit'):
     settings = get_settings(request)
     command, subcommand, repo = None, None, None
     if action in (' receive-pack ', ' upload-pack '):
@@ -80,7 +80,7 @@ def handle_git(request, action):
 
     parsed_repo = repo[1:-1][:-4]       # remove quotes and .git extension
     repo_name = parsed_repo.split('/', 1)[1]
-    if auth.has_permission(request, request.user, ('kittygit', perm, parsed_repo)):
+    if auth.has_permission(request, request.user, (permission_prefix, perm, parsed_repo)):
         directory = get_full_repo_dir(settings, request.user, repo_name) 
         success = operations.git_shell(
             settings.get('git', 'git'), 
